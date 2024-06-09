@@ -4,8 +4,10 @@
   python interaction.py "output/oxford_flowers_a_flower_photo_of_a/CoOp/rn50_ep50_16shots/nctx16_cscFalse_ctpend/seed1/prompt_learner/model.pth.tar-50" "./data/oxford_flowers/split_zhou_OxfordFlowers.json" "the flower photo of a" 1
   python interaction.py "output/oxford_pets/CoOp/rn50_ep50_16shots/nctx16_cscFalse_ctpend/seed1/prompt_learner/model.pth.tar-50" "./data/oxford_pets/split_zhou_OxfordPets.json" "the animal pet photo of a" 1
   python interaction.py "output/caltech101_a_color_image_of_a/CoOp/rn50_ep50_16shots/nctx16_cscFalse_ctpend/seed1/prompt_learner/model.pth.tar-50" "./data/caltech-101/split_zhou_Caltech101.json" "the color image of a" 1
+  python interaction.py "output/caltech101_a_color_image_of_a/CoOp/rn50_ep50_16shots/nctx16_cscFalse_ctpend/seed1/prompt_learner/model.pth.tar-50" "./data/caltech-101/split_zhou_Caltech101.json" "At the airport you can spot a" 1
 
 ・分類を行うデータセットに応じて書き換える文
+  if len(tokenizer.encode(name)) == 2: 144行目
   PIL_image = Image.open(f'./data/oxford_flowers/jpg/{image_paths[0]}') 168行目
   PIL_image = Image.open(f'./data/oxford_flowers/jpg/{image_paths[i]}') 731行目
 
@@ -39,6 +41,7 @@ import  itertools
 import math
 import matplotlib.pyplot as plt
 import time
+from matplotlib.colors import TwoSlopeNorm
 
 torch.set_printoptions(edgeitems=1050)
 
@@ -143,9 +146,11 @@ json_file_path = args.json_path
 classnames = load_class_names(json_file_path)
 restrict_classnames = []
 for name in classnames:
-  if len(tokenizer.encode(name)) == 1:
+  if len(tokenizer.encode(name)) == 2:
       restrict_classnames.append(name)
+
 print(f"Number of restricted classnames: {len(restrict_classnames)}")
+print(f"List of restricted classnames: {restrict_classnames}")
 
 # 学習されたトークンをロード
 fpath = args.model_path
@@ -158,7 +163,9 @@ shap_values_list2 = []
 shap_values_list3 = []
 # SHAP値をクラス数、画像数に対して平均
 for ind, groundtruth_classname in enumerate(restrict_classnames):
-    if(ind==2):
+    # if(groundtruth_classname!="airplane"):
+    #     continue
+    if(ind==1):
         break
 
     # groundtruth_classname="hibiscus" # 正解クラス
@@ -167,8 +174,8 @@ for ind, groundtruth_classname in enumerate(restrict_classnames):
     image_paths = load_image_paths(json_file_path, groundtruth_classname)
     # 入力画像（PIL形式に変換し、PIL画像を前処理したもの）
     # PIL_image = Image.open(f'./data/oxford_flowers/jpg/{image_paths[3]}')
-    # PIL_image = Image.open(f'./data/caltech-101/101_ObjectCategories/{image_paths[0]}')
-    PIL_image = Image.open(f'./data/oxford_pets/images/{image_paths[0]}')
+    PIL_image = Image.open(f'./data/caltech-101/101_ObjectCategories/{image_paths[0]}')
+    # PIL_image = Image.open(f'./data/oxford_pets/images/{image_paths[0]}')
     PIL_image.show()
     image_input = transform(PIL_image).unsqueeze(0).to("cuda")
 
@@ -839,8 +846,8 @@ for ind, groundtruth_classname in enumerate(restrict_classnames):
     num_input_images = args.num_input_images
     for i in range(num_input_images):
         # PIL_image = Image.open(f'./data/oxford_flowers/jpg/{image_paths[i]}')
-        # PIL_image = Image.open(f'./data/caltech-101/101_ObjectCategories/{image_paths[i]}')
-        PIL_image = Image.open(f'./data/oxford_pets/images/{image_paths[i]}')
+        PIL_image = Image.open(f'./data/caltech-101/101_ObjectCategories/{image_paths[i]}')
+        # PIL_image = Image.open(f'./data/oxford_pets/images/{image_paths[i]}')
         PIL_image_list.append(PIL_image) # len = 10
 
      # 各入力画像での各トークン同士のinteractionsを格納するリスト
@@ -864,7 +871,8 @@ for ind, groundtruth_classname in enumerate(restrict_classnames):
         print(" ".join("{:>6.1f}".format(x) for x in row))
 
     # ヒートマップを生成
-    plt.imshow(average_interactions, cmap='coolwarm', interpolation='nearest')
+    norm = TwoSlopeNorm(vmin=average_interactions.min(), vcenter=0, vmax=average_interactions.max())
+    plt.imshow(average_interactions, cmap='coolwarm', norm=norm, interpolation='nearest')
     plt.colorbar()  # カラーバーを追加
     plt.title('Heatmap of the Matrix')
     plt.xlabel('Column Index')
@@ -919,7 +927,8 @@ for ind, groundtruth_classname in enumerate(restrict_classnames):
         print(" ".join("{:>6.1f}".format(x) for x in row))
     
     # ヒートマップを生成
-    plt.imshow(average_interactions, cmap='coolwarm', interpolation='nearest')
+    norm = TwoSlopeNorm(vmin=average_interactions.min(), vcenter=0, vmax=average_interactions.max())
+    plt.imshow(average_interactions, cmap='coolwarm', norm=norm, interpolation='nearest')
     plt.colorbar()  # カラーバーを追加
     plt.title('Heatmap of the Matrix')
     plt.xlabel('Column Index')
