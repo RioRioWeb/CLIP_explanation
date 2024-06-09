@@ -162,11 +162,12 @@ print(f"Number of context tokens: {ctx_length}")
 
 total = 0
 count = 0
+count_array = np.zeros((len(restrict_classnames), args.num_input_images))
 img_ave_init_shap_values_list = []
 img_ave_ctx_shap_values_list = []
 # SHAP値をクラス数、画像数に対して平均
 for idx, groundtruth_classname in enumerate(restrict_classnames):
-    # if(idx == 3):
+    # if(idx == 1):
     #     break
     print(f"----- groundtruth classname{idx}: {groundtruth_classname} -----")
     # 入力画像をロード
@@ -732,8 +733,10 @@ for idx, groundtruth_classname in enumerate(restrict_classnames):
         total += 1
         class_token_index = ctx_length + 1
         if ctx_shap_values[class_token_index] > init_shap_values[class_token_index]:
+            count_array[idx][i] = 1
             count += 1
             print(f"クラストークンの貢献度が増加. 合計: {count}")
+            print(f"クラストークンの貢献度が増加. count_array: {count_array}")
         # 各画像でのSHAP値をリストに格納
         init_shap_values_list.append(init_shap_values)
         ctx_shap_values_list.append(ctx_shap_values)
@@ -787,5 +790,5 @@ for i, ave_shap_value in enumerate(class_img_ctx_ave_shap_values[0]):
 
 # 全サンプルの内、学習後のクラストークンのSHAP値の方が大きいサンプルの数を表示
 print(f"count/total: {count}/{total}")
-
+print(f"count_array: {count_array}")
 # endregion
