@@ -166,10 +166,10 @@ count = 0
 img_ave_init_shap_values_list = []
 img_ave_ctx_shap_values_list = []
 # SHAP値をクラス数、画像数に対して平均
-for ind, groundtruth_classname in enumerate(restrict_classnames):
-    # if(ind == 3):
+for idx, groundtruth_classname in enumerate(restrict_classnames):
+    # if(idx == 3):
     #     break
-    print(f"----- groundtruth classname{ind}: {groundtruth_classname} -----")
+    print(f"----- groundtruth classname{idx}: {groundtruth_classname} -----")
     # 入力画像をロード
     image_paths = load_image_paths(json_file_path, groundtruth_classname)
     # PIL_image = Image.open(f'./data/oxford_flowers/jpg/{image_paths[0]}')
