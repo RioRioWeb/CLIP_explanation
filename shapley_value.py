@@ -1,19 +1,23 @@
 '''
 ・ターミナルコマンド
-  python shapley_value.py {model_path} {json_path} {init_ctx} {num_input_images}
-  python shapley_value.py "output/oxford_flowers_a_flower_photo_of_a/CoOp/rn50_ep50_16shots/nctx16_cscFalse_ctpend/seed1/prompt_learner/model.pth.tar-50" "./data/oxford_flowers/split_zhou_OxfordFlowers.json" "the flower photo of a" 1
-  python shapley_value.py "output/oxford_pets/CoOp/rn50_ep50_16shots/nctx16_cscFalse_ctpend/seed1/prompt_learner/model.pth.tar-50" "./data/oxford_pets/split_zhou_OxfordPets.json" "the animal pet photo of a" 1
-  python shapley_value.py "output/caltech101_a_color_image_of_a/CoOp/rn50_ep50_16shots/nctx16_cscFalse_ctpend/seed1/prompt_learner/model.pth.tar-50" "./data/caltech-101/split_zhou_Caltech101.json" "the color image of a" 1
+  - 自然言語の初期値
+  python shapley_value.py {model_path} {json_path} {init_ctx} {num_input_images} {num_class_tokens}
+  python shapley_value.py "output/oxford_flowers_a_flower_photo_of_a/CoOp/rn50_ep50_16shots/nctx16_cscFalse_ctpend/seed1/prompt_learner/model.pth.tar-50" "./data/oxford_flowers/split_zhou_OxfordFlowers.json" "the flower photo of a" 1 1
+  python shapley_value.py "output/oxford_pets_the_animal_pet_photo_of_a/CoOp/rn50_ep50_16shots/nctx16_cscFalse_ctpend/seed1/prompt_learner/model.pth.tar-50" "./data/oxford_pets/split_zhou_OxfordPets.json" "the animal pet photo of a" 1 1
+  python shapley_value.py "output/caltech101_a_color_image_of_a/CoOp/rn50_ep50_16shots/nctx16_cscFalse_ctpend/seed1/prompt_learner/model.pth.tar-50" "./data/caltech-101/split_zhou_Caltech101.json" "the color image of a" 1 1
+  - ランダム初期値
+  python shapley_value.py "output/oxford_pets_random/CoOp/rn50_ep50_16shots/nctx6_cscFalse_ctpend/seed1/prompt_learner/model.pth.tar-50" "./data/oxford_pets/split_zhou_OxfordPets.json" "the animal pet photo of a" 1 1
 
 ・分類を行うデータセットに応じて書き換える文
   if len(tokenizer.encode(name)) == 2: 144行目
   PIL_image = Image.open(f'./data/oxford_flowers/jpg/{image_paths[0]}') 168行目
   PIL_image = Image.open(f'./data/oxford_flowers/jpg/{image_paths[i]}') 731行目
+  file_path = 'output/oxford_pets_random/CoOp/rn50_ep50_16shots/nctx6_cscFalse_ctpend/seed1/random_init_ctx.pth' 625行目
 
 ・model_path
-  "output/oxford_flowers_random/CoOp/rn50_ep50_16shots/nctx5_cscFalse_ctpend/seed1/prompt_learner/model.pth.tar-50"
+  "output/oxford_flowers_a_flower_photo_of_a/CoOp/rn50_ep50_16shots/nctx5_cscFalse_ctpend/seed1/prompt_learner/model.pth.tar-50"
   "output/caltech101_a_color_image_of_a/CoOp/rn50_ep50_16shots/nctx16_cscFalse_ctpend/seed1/prompt_learner/model.pth.tar-50"
-  "output/oxford_pets/CoOp/rn50_ep50_16shots/nctx16_cscFalse_ctpend/seed1/prompt_learner/model.pth.tar-50"
+  "output/oxford_pets_the_animal_pet_photo_of_a/CoOp/rn50_ep50_16shots/nctx16_cscFalse_ctpend/seed1/prompt_learner/model.pth.tar-50"
 
 ・json_path
   "./data/oxford_flowers/split_zhou_OxfordFlowers.json"
@@ -39,7 +43,7 @@ from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normal
 import  itertools
 import math
 
-torch.set_printoptions(edgeitems=1050)
+# torch.set_printoptions(edgeitems=1050)
 
 try:
     from torchvision.transforms import InterpolationMode
@@ -126,11 +130,13 @@ parser.add_argument("model_path", type=str, help="Path to the model file.")
 parser.add_argument("json_path", type=str, help="Path to the JSON file.")
 parser.add_argument("init_ctx", type=str, help="Initial value of context")
 parser.add_argument("num_input_images", type=int, help="Number of input images")
+parser.add_argument("num_class_tokens", type=int, help="Number of class tokens")
 args = parser.parse_args()
 print(f"Model file path: {args.model_path}")
 print(f"JSON file path: {args.json_path}")
 print(f"Initial value of context: {args.init_ctx}")
 print(f"Number of input images: {args.num_input_images}")
+print(f"Number of class tokens: {args.num_class_tokens}")
 
 tokenizer = SimpleTokenizer()
 clip_model = load_clip_to_gpu()
@@ -139,12 +145,14 @@ transform = preprocess(clip_model.visual.input_resolution) # 前処理用のオ�
 
 # 指定したトークン数にBPEで分割されるクラスに絞る
 json_file_path = args.json_path
+num_class_tokens = args.num_class_tokens
 classnames = load_class_names(json_file_path)
 restrict_classnames = []
 for name in classnames:
-  if len(tokenizer.encode(name)) == 2 and "flower" not in name:
+  if len(tokenizer.encode(name)) == num_class_tokens and "flower" not in name:
       restrict_classnames.append(name)
 print(f"Number of restricted classnames: {len(restrict_classnames)}")
+print(f"List of restricted classnames: {restrict_classnames}")
 
 # 学習されたトークンをロード
 fpath = args.model_path
@@ -153,21 +161,23 @@ ctx = prompt_learner["ctx"].float()
 ctx_length = ctx.size(0)
 print(f"Number of context tokens: {ctx_length}")
 
+total = 0
+count = 0
 img_ave_init_shap_values_list = []
 img_ave_ctx_shap_values_list = []
 # SHAP値をクラス数、画像数に対して平均
 for ind, groundtruth_classname in enumerate(restrict_classnames):
-    if(ind == 6):
-        break
+    # if(ind == 3):
+    #     break
     print(f"----- groundtruth classname{ind}: {groundtruth_classname} -----")
-    # 入力するテスト画像をロード
+    # 入力画像をロード
     image_paths = load_image_paths(json_file_path, groundtruth_classname)
-    PIL_image = Image.open(f'./data/oxford_flowers/jpg/{image_paths[0]}')
+    # PIL_image = Image.open(f'./data/oxford_flowers/jpg/{image_paths[0]}')
     # PIL_image = Image.open(f'./data/caltech-101/101_ObjectCategories/{image_paths[0]}')
-    # PIL_image = Image.open(f'./data/oxford_pets/images/{image_paths[0]}')
+    PIL_image = Image.open(f'./data/oxford_pets/images/{image_paths[0]}')
     image_input = transform(PIL_image).unsqueeze(0).to("cuda")
 
-    # region -------------init_ctxで画像分類-------------
+    # region -------------初期値のプロンプトを用いた画像分類-------------
     # 自然言語文のテキストプロンプト
     init_ctx = args.init_ctx
     # IDベクトルに変換
@@ -186,15 +196,12 @@ for ind, groundtruth_classname in enumerate(restrict_classnames):
 
     # top5の予測クラスと予測確率を表示
     values, indices = logits[0].topk(3)
-    print("Zero-Shot-CLIPの予測クラス: 予測確率")
-    for value, index in zip(values, indices):
-        print(f"{classnames[index]:>16s}: {100 * value.item():.2f}%")
-
-    debag_logits = (logit_scale * image_features @ text_features.t())
-    values, indices = debag_logits[0].topk(1)
+    # print("Zero-Shot-CLIPの予測クラス: 予測確率")
+    # for value, index in zip(values, indices):
+    #     print(f"{classnames[index]:>16s}: {100 * value.item():.2f}%")
     # endregion
 
-    # region -------------ctxで画像分類------------------
+    # region -------------学習後のプロンプトを用いた画像分類------------------
     fpath = args.model_path             # モデルファイルパス
     prompt_learner = torch.load(fpath, map_location="cuda")["state_dict"]
     ctx = prompt_learner["ctx"].float() # Size = [5, 512]
@@ -247,16 +254,12 @@ for ind, groundtruth_classname in enumerate(restrict_classnames):
 
     # top5の予測クラスと予測確率を表示
     values, indices = logits[0].topk(3)
-    print("CLIP+CoOpの予測クラス: 予測確率")
-    for value, index in zip(values, indices):
-        print(f"{classnames[index]:>16s}: {100 * value.item():.2f}%")
-
-    debag_logits = (logit_scale * image_features @ text_features.t())
-    values, indices = debag_logits[0].topk(1)
-    # print(f"positive_logit = {values[0].item():.2f}")
+    # print("CLIP+CoOpの予測クラス: 予測確率")
+    # for value, index in zip(values, indices):
+    #     print(f"{classnames[index]:>16s}: {100 * value.item():.2f}%")
     # endregion
 
-    # region -------------init_ctxをSHAP分析-------------
+    # region -------------初期値のプロンプトのSHAP値を計算するための関数たち-------------
     # テキストプロンプトのトークン化関数
     def my_tokenize(texts, tokenizer, max_length=77):
         if isinstance(texts, str):
@@ -431,21 +434,9 @@ for ind, groundtruth_classname in enumerate(restrict_classnames):
 
         return shap_values
 
-    '''
-    # 各トークンのSHAP値を計算
-    shap_values = compute_shap_values(background_data, batch_model_predict, text_input, PIL_image)
-
-    # 各トークンのSHAP値を表示
-    print("\n初期値のプロンプトの各トークンのShapley Value")
-    for i, shap_value in enumerate(shap_values):
-        token_id = text_input[0, i].item()
-        if token_id != 0 and token_id != 49406 and token_id != 49407:  # ID=0以外のトークンのSHAP値を表示 ※ID=0のトークンのSHAP値はそもそも計算していない
-            token = tokenizer.decode([token_id])
-            print(f"Token: {token:<15} Shapley Value: {shap_value:.4f}")  
-    '''
     # endregion
 
-    # region -------------ctxをSHAP分析------------------
+    # region -------------学習後のプロンプトのSHAP値を計算するための関数たち------------------
     def count_valid_tokens(prompt_embedding):
         embedding = clip_model.token_embedding
         pad_token_embedding = embedding(torch.tensor([0]).to("cuda"))     # Size = [1, 512]
@@ -614,7 +605,14 @@ for ind, groundtruth_classname in enumerate(restrict_classnames):
     prefix_token = embedding[:, :1, :]           # Size = [1, 1, 512]  | SOSトークンの特徴ベクトル
     suffix_token = embedding[:, 1 + n_ctx:, :]   # Size = [1, 71, 512] | CLSトークン, 「.」トークン, EOSトークン, それ以降のトークンの特徴ベクトル
 
-    ctx = prompt_learner["ctx"].float()          # Size = [5, 512]
+    # random_init_ctx.pthファイルのパスを指定
+    file_path = 'output/oxford_pets_random/CoOp/rn50_ep50_16shots/nctx6_cscFalse_ctpend/seed1/random_init_ctx.pth'
+    # ランダム初期値のコンテキストをロード
+    init_ctx_vectors = torch.load(file_path, map_location='cuda')
+    ctx = init_ctx_vectors
+    # 学習後のコンテキストをロード
+    ctx = prompt_learner["ctx"].float() # Size = [5, 512]
+
     # 「SOS + ctx + {classname} + . + EOS」のトークン埋め込みベクトルを構築
     ctx = ctx.unsqueeze(0).expand(n_cls, -1, -1) # Size = [n_cls=1, 5, 512]
     prompt_embedding = torch.cat(
@@ -629,7 +627,7 @@ for ind, groundtruth_classname in enumerate(restrict_classnames):
 
     # 背景データの生成
     ctx_background_datas, combinations = generate_ctx_background_datas(prompt_embedding) # Size = [1023, 77, 512]
-    # print(f"background_data = {ctx_background_datas[1022, :13, :5].type(clip_model.dtype)} {ctx_background_datas.shape}")# OK
+    # # print(f"background_data = {ctx_background_datas[1022, :13, :5].type(clip_model.dtype)} {ctx_background_datas.shape}")# OK
 
     # 引数のテキストプロンプトの各トークンのSHAP値を計算する関数
     def compute_ctx_shap_values(background_data, model_predict, prompt_embedding, PIL_image):
@@ -698,78 +696,78 @@ for ind, groundtruth_classname in enumerate(restrict_classnames):
                 # print(f"P(S|N/{i})f(Si) - f(S) = {P * temp} ")
 
         return shap_values
-
-    '''
-    # 各トークンのSHAP値を計算
-    shap_values = compute_ctx_shap_values(ctx_background_datas, ctx_model_predict, prompt_embedding, PIL_image)
-
-    # 各トークンのSHAP値を表示
-    print("\n学習されたプロンプトの各トークンのSHAP値")
-    for i, shap_value in enumerate(shap_values):
-        if  i < prompt_length:  # EOSまでのトークンのSHAP値を表示
-            if i != 0 and i != prompt_length - 1:
-                print(f"trained Token{i} SHAP Value: {shap_value:.5f}")
-    '''
     # endregion
 
-    # region -------------init_ctxのSHAP値（画像数で平均）--------------
+    # region -------------SHAP値を計算--------------
     # 入力画像のリストを生成
     PIL_image_list = []
     num_input_images = args.num_input_images
     for i in range(num_input_images):
-        PIL_image = Image.open(f'./data/oxford_flowers/jpg/{image_paths[i]}')
+        # PIL_image = Image.open(f'./data/oxford_flowers/jpg/{image_paths[i]}')
         # PIL_image = Image.open(f'./data/caltech-101/101_ObjectCategories/{image_paths[i]}')
-        # PIL_image = Image.open(f'./data/oxford_pets/images/{image_paths[i]}')
+        PIL_image = Image.open(f'./data/oxford_pets/images/{image_paths[i]}')
         PIL_image_list.append(PIL_image)
-
-    # 各画像でのSHAP値をリストに格納
-    shap_values_list = []
-    for i, PIL_image in enumerate(PIL_image_list):
-        print(f"{i+1}個目の入力画像におけるSHAP値を計算")
-        shap_values = compute_shap_values(background_data, batch_model_predict, text_input, PIL_image)
-        shap_values_list.append(shap_values) # len = 10
     
-    # 画像数で平均したSHAP値を計算
-    ave_shap_values = 0
-    shap_values_list_array = np.array(shap_values_list)
-    ave_shap_values = shap_values_list_array.sum(axis=0, keepdims=True)
-    ave_shap_values /= len(shap_values_list)
+    init_shap_values_list = []
+    ctx_shap_values_list = []
+    for i, PIL_image in enumerate(PIL_image_list):
+        # 初期値トークンのSHAP値
+        print(f"{i+1}個目の入力画像と初期値のプロンプトにおけるSHAP値を計算")
+        init_shap_values = compute_shap_values(background_data, batch_model_predict, text_input, PIL_image) # 計算
+        for j, init_shap_value in enumerate(init_shap_values): # 表示
+            if(init_shap_value != 0):
+                token_id = text_input[0, j].item()
+                token = tokenizer.decode([token_id])
+                print(f"{token:<16} SHAP値: {init_shap_value:.2f}")
+        # 学習後トークンのSHAP値
+        print(f"{i+1}個目の入力画像に学習後のプロンプトにおけるSHAP値を計算")
+        ctx_shap_values = compute_ctx_shap_values(ctx_background_datas, ctx_model_predict, prompt_embedding, PIL_image) # 計算
+        for j, ctx_shap_value in enumerate(ctx_shap_values): # 表示
+            if(ctx_shap_value != 0 and i < ctx_length + 1):
+                print(f"Optimized token{j} SHAP値: {ctx_shap_value:.3f}")
+            elif(ctx_shap_value != 0):
+                token_id = text_input[0, j].item()
+                token = tokenizer.decode([token_id])
+                print(f"{token:<16} SHAP値: {ctx_shap_value:.3f}")
+        # 学習でクラストークンのSHAP値が増加するか確認
+        total += 1
+        class_token_index = ctx_length + 1
+        if ctx_shap_values[class_token_index] > init_shap_values[class_token_index]:
+            count += 1
+            print(f"クラストークンの貢献度が増加. 合計: {count}")
+        # 各画像でのSHAP値をリストに格納
+        init_shap_values_list.append(init_shap_values)
+        ctx_shap_values_list.append(ctx_shap_values)
 
-    img_ave_init_shap_values_list.append(ave_shap_values[0])
-
-    print("初期値のトークンのSHAP値（画像数で平均）")
+    # 各画像でのSHAP値を平均する関数
+    def average_shap_values(shap_values_list):
+        shap_values_list_array = np.array(shap_values_list)
+        ave_shap_values = shap_values_list_array.sum(axis=0, keepdims=True)
+        ave_shap_values /= len(shap_values_list)
+        return ave_shap_values
+    ave_shap_values = average_shap_values(init_shap_values_list) # 平均化
+    ctx_ave_shap_values = average_shap_values(ctx_shap_values_list) # 平均化
+    print("初期値のプロンプトのSHAP値（画像数で平均）") # 表示
     for i, ave_shap_value in enumerate(ave_shap_values[0]):
-        if(shap_values[i] != 0):
+        if(ave_shap_value != 0):
             token_id = text_input[0, i].item()
             token = tokenizer.decode([token_id])
             print(f"{token:<16} SHAP値: {ave_shap_value:.2f}")
-    # endregion
-
-    # region -------------ctxのSHAP値（画像数に対する平均）-------------------
-    # 各画像でのSHAP値をリストに格納
-    shap_values_list = []
-    for i, PIL_image in enumerate(PIL_image_list):
-        print(f"{i+1}個目の入力画像におけるSHAP値を計算")
-        shap_values = compute_ctx_shap_values(ctx_background_datas, ctx_model_predict, prompt_embedding, PIL_image)
-        shap_values_list.append(shap_values)
-        
-    # 画像数で平均したSHAP値を計算
-    ave_shap_values = 0
-    shap_values_list_array = np.array(shap_values_list)
-    ave_shap_values = shap_values_list_array.sum(axis=0, keepdims=True)
-    ave_shap_values /= len(shap_values_list)
-
-    img_ave_ctx_shap_values_list.append(ave_shap_values[0])
-
-    print("学習されたトークンのSHAP値（画像数で平均）")
-    for i, ave_shap_value in enumerate(ave_shap_values[0]):
-        if(shap_values[i] != 0 and i < ctx_length + 1):
-            print(f"Optimized token{i} SHAP値: {ave_shap_value:.3f}")
-        elif(shap_values[i] != 0):
+    print("学習されたプロンプトのSHAP値（画像数で平均）") # 表示
+    for i, ctx_ave_shap_value in enumerate(ctx_ave_shap_values[0]):
+        if(ctx_ave_shap_value != 0 and i < ctx_length + 1):
+            print(f"Optimized token{i} SHAP値: {ctx_ave_shap_value:.3f}")
+        elif(ctx_ave_shap_value != 0):
             token_id = text_input[0, i].item()
             token = tokenizer.decode([token_id])
-            print(f"{token:<16} SHAP値: {ave_shap_value:.3f}")
+            print(f"{token:<16} SHAP値: {ctx_ave_shap_value:.3f}")
+    # 平均したSHAP値をリストに格納  
+    img_ave_init_shap_values_list.append(ave_shap_values[0])
+    img_ave_ctx_shap_values_list.append(ctx_ave_shap_values[0])
     # endregion
+
+# 全サンプルの内、学習後のクラストークンのSHAP値の方が大きいサンプルの数を表示
+print(f"count/total: {count}/{total}")
             
 # region -------------init_ctx, ctxのSHAP値（画像数とクラス数で平均）-------------
 # クラス数でSHAP値を平均
