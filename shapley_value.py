@@ -739,21 +739,21 @@ for ind, groundtruth_classname in enumerate(restrict_classnames):
         init_shap_values_list.append(init_shap_values)
         ctx_shap_values_list.append(ctx_shap_values)
 
-    # 各画像でのSHAP値を平均する関数
+    # 各サンプルでのSHAP値を平均する関数
     def average_shap_values(shap_values_list):
         shap_values_list_array = np.array(shap_values_list)
         ave_shap_values = shap_values_list_array.sum(axis=0, keepdims=True)
         ave_shap_values /= len(shap_values_list)
         return ave_shap_values
-    ave_shap_values = average_shap_values(init_shap_values_list) # 平均化
-    ctx_ave_shap_values = average_shap_values(ctx_shap_values_list) # 平均化
-    print("初期値のプロンプトのSHAP値（画像数で平均）") # 表示
+    ave_shap_values = average_shap_values(init_shap_values_list) # 各画像で平均
+    ctx_ave_shap_values = average_shap_values(ctx_shap_values_list) # 各画像で平均
+    print("初期値のプロンプトのSHAP値（画像が異なるサンプルで平均）") # 表示
     for i, ave_shap_value in enumerate(ave_shap_values[0]):
         if(ave_shap_value != 0):
             token_id = text_input[0, i].item()
             token = tokenizer.decode([token_id])
             print(f"{token:<16} SHAP値: {ave_shap_value:.2f}")
-    print("学習されたプロンプトのSHAP値（画像数で平均）") # 表示
+    print("学習されたプロンプトのSHAP値（画像が異なるサンプル平均）") # 表示
     for i, ctx_ave_shap_value in enumerate(ctx_ave_shap_values[0]):
         if(ctx_ave_shap_value != 0 and i < ctx_length + 1):
             print(f"Optimized token{i} SHAP値: {ctx_ave_shap_value:.3f}")
@@ -765,33 +765,19 @@ for ind, groundtruth_classname in enumerate(restrict_classnames):
     img_ave_init_shap_values_list.append(ave_shap_values[0])
     img_ave_ctx_shap_values_list.append(ctx_ave_shap_values[0])
     # endregion
-
-# 全サンプルの内、学習後のクラストークンのSHAP値の方が大きいサンプルの数を表示
-print(f"count/total: {count}/{total}")
             
-# region -------------init_ctx, ctxのSHAP値（画像数とクラス数で平均）-------------
-# クラス数でSHAP値を平均
-ave_shap_values = 0
-shap_values_list_array = np.array(img_ave_init_shap_values_list)
-ave_shap_values = shap_values_list_array.sum(axis=0, keepdims=True)
-ave_shap_values /= len(img_ave_init_shap_values_list)
+# region -------------全サンプルにおけるSHAP値を平均-------------
+ave_shap_values = average_shap_values(img_ave_init_shap_values_list) # 各クラスで平均
+ave_shap_values = average_shap_values(img_ave_ctx_shap_values_list) # 各クラスで平均
 
-init_ctx = args.init_ctx
-text_input = clip.tokenize(f"{init_ctx} " + "class "*2 + ".").to("cuda")
-print("初期値のトークンのSHAP値（画像数とクラス数で平均）")
+text_input = clip.tokenize(f"{args.init_ctxx} " + "class " * num_class_tokens + ".").to("cuda")
+print("初期値のプロンプトのSHAP値（画像とクラスが異なるサンプルでで平均）") # 表示
 for i, ave_shap_value in enumerate(ave_shap_values[0]):
     if(ave_shap_value != 0):
         token_id = text_input[0, i].item()
         token = tokenizer.decode([token_id])
         print(f"{token:<16} SHAP値: {ave_shap_value:.2f}")
-
-# クラス数でSHAP値を平均
-ave_shap_values = 0
-shap_values_list_array = np.array(img_ave_ctx_shap_values_list)
-ave_shap_values = shap_values_list_array.sum(axis=0, keepdims=True)
-ave_shap_values /= len(img_ave_ctx_shap_values_list)
-
-print("学習されたトークンのSHAP値（画像数とクラス数で平均）")
+print("学習されたプロンプトのSHAP値（画像とクラスが異なるサンプルで平均）") # 表示
 for i, ave_shap_value in enumerate(ave_shap_values[0]):
     if(ave_shap_value != 0 and i < ctx_length+1):
         print(f"学習されたトークン{i} SHAP値: {ave_shap_value:.3f}")
@@ -799,4 +785,8 @@ for i, ave_shap_value in enumerate(ave_shap_values[0]):
         token_id = text_input[0, i].item()
         token = tokenizer.decode([token_id])
         print(f"{token:<16} SHAP値: {ave_shap_value:.3f}")
+
+# 全サンプルの内、学習後のクラストークンのSHAP値の方が大きいサンプルの数を表示
+print(f"count/total: {count}/{total}")
+
 # endregion
