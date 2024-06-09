@@ -9,7 +9,6 @@
   python shapley_value.py "output/oxford_pets_random/CoOp/rn50_ep50_16shots/nctx6_cscFalse_ctpend/seed1/prompt_learner/model.pth.tar-50" "./data/oxford_pets/split_zhou_OxfordPets.json" "the animal pet photo of a" 1 1
 
 ・分類を行うデータセットに応じて書き換える文
-  if len(tokenizer.encode(name)) == 2: 144行目
   PIL_image = Image.open(f'./data/oxford_flowers/jpg/{image_paths[0]}') 168行目
   PIL_image = Image.open(f'./data/oxford_flowers/jpg/{image_paths[i]}') 731行目
   file_path = 'output/oxford_pets_random/CoOp/rn50_ep50_16shots/nctx6_cscFalse_ctpend/seed1/random_init_ctx.pth' 625行目
